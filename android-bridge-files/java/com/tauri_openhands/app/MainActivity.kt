@@ -66,12 +66,13 @@ class MainActivity : TauriActivity() {
         // Enable Strada bridge support
         bridgeManager = webView.enableStradaBridge(this)
         
-        // For testing, load the Stimulus demo site in debug mode
+        // For testing, load our Stimulus test controllers page in debug mode
         if (BuildConfig.DEBUG) {
-            // Load the Stimulus demo site for testing Hotwire-compatible pages
-            webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
+            // Load our custom Stimulus test page with controllers
+            webView.loadUrlWithStrada("file:///android_asset/strada-test-controllers.html", bridgeManager)
             
-            // Alternatively, load our test page directly
+            // Alternative options:
+            // webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
             // webView.loadUrlWithStrada("file:///android_asset/strada-bridge-demo.html", bridgeManager)
         }
     }

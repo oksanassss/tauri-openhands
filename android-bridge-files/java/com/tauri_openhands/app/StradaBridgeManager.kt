@@ -40,8 +40,15 @@ class StradaBridgeManager(private val context: Context) {
      * Handle activity results from the parent activity
      */
     fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        // Check for both camelCase and kebab-case component names
         val filePickerComponent = components["filePicker"] as? FilePickerComponent
         filePickerComponent?.handleActivityResult(requestCode, resultCode, data)
+        
+        // Also check for kebab-case component name (used by Stimulus)
+        val kebabCaseComponent = components["file-picker"] as? FilePickerComponent
+        if (kebabCaseComponent != null && kebabCaseComponent !== filePickerComponent) {
+            kebabCaseComponent.handleActivityResult(requestCode, resultCode, data)
+        }
     }
     companion object {
         private const val TAG = "StradaBridgeManager"
@@ -326,6 +333,7 @@ class StradaBridgeManager(private val context: Context) {
             "toast" -> ToastComponent(context)
             "dialog" -> DialogComponent(context)
             "filePicker" -> FilePickerComponent(context)
+            "file-picker" -> FilePickerComponent(context) // Support kebab-case for Stimulus
             "camera" -> CameraComponent(context)
             "share" -> ShareComponent(context)
             "notification" -> NotificationComponent(context)
@@ -620,12 +628,38 @@ class StradaBridgeManager(private val context: Context) {
                     sendToWeb(name, "connected", mapOf("status" to "ready"))
                 }
                 "open" -> {
-                    val mimeType = message.data.optString("mimeType", "*/*")
+                    // Get mime types from the message
+                    val mimeTypes = if (message.data.has("mimeTypes")) {
+                        val mimeTypesArray = message.data.optJSONArray("mimeTypes")
+                        if (mimeTypesArray != null) {
+                            val types = mutableListOf<String>()
+                            for (i in 0 until mimeTypesArray.length()) {
+                                types.add(mimeTypesArray.optString(i))
+                            }
+                            types.toTypedArray()
+                        } else {
+                            arrayOf(message.data.optString("mimeType", "*/*"))
+                        }
+                    } else {
+                        arrayOf(message.data.optString("mimeType", "*/*"))
+                    }
+                    
                     val multiple = message.data.optBoolean("multiple", false)
                     
                     activity.runOnUiThread {
                         val intent = Intent(Intent.ACTION_GET_CONTENT)
-                        intent.type = mimeType
+                        
+                        // If multiple mime types are specified, use the first one as the primary type
+                        // and add the rest as EXTRA_MIME_TYPES
+                        if (mimeTypes.isNotEmpty()) {
+                            intent.type = mimeTypes[0]
+                            if (mimeTypes.size > 1) {
+                                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+                            }
+                        } else {
+                            intent.type = "*/*"
+                        }
+                        
                         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
                         activity.startActivityForResult(
                             Intent.createChooser(intent, "Select File"),
@@ -663,7 +697,7 @@ class StradaBridgeManager(private val context: Context) {
                     }
                 }
                 
-                sendToWeb(name, "selected", mapOf("files" to result))
+                sendToWeb(name, "result", mapOf("files" to result))
             } else if (requestCode == FILE_PICKER_REQUEST_CODE) {
                 // User cancelled the picker
                 sendToWeb(name, "cancelled", mapOf<String, Any>())

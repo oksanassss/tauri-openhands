@@ -33,19 +33,32 @@
         console.log('Strada Stimulus Adapter: Registered component for controller', name);
         
         // Listen for Strada events and dispatch them to Stimulus controllers
-        document.addEventListener(`strada:${name}:*`, function(event) {
-          const eventName = event.type.split(':')[2];
-          const detail = event.detail;
+        window.addEventListener("StradaReceiveMessage", function(event) {
+          if (!event.detail) return;
+          
+          const { component, event: eventName, data } = event.detail;
+          
+          // Only process events for this component
+          if (component !== name) return;
+          
+          console.log(`Strada event received for ${name}: ${eventName}`, data);
           
           // Find all instances of this controller
           const elements = document.querySelectorAll(`[data-controller~="${name}"]`);
           elements.forEach(element => {
             // Dispatch a custom event to the element
-            const customEvent = new CustomEvent(`strada:${eventName}`, {
-              detail: detail,
+            const customEvent = new CustomEvent(`strada:${name}:${eventName}`, {
+              detail: data,
               bubbles: true
             });
             element.dispatchEvent(customEvent);
+            
+            // Also dispatch a simpler event for compatibility
+            const simpleEvent = new CustomEvent(`strada:${eventName}`, {
+              detail: data,
+              bubbles: true
+            });
+            element.dispatchEvent(simpleEvent);
           });
         });
       }

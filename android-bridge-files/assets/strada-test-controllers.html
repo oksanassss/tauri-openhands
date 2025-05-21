@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strada Bridge Test with Stimulus</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 12px;
+            padding: 8px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            min-height: 24px;
+        }
+        .file-preview {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Strada Bridge Test with Stimulus</h1>
+    <p>This page demonstrates the integration between Stimulus controllers and the Strada native bridge.</p>
+
+    <!-- File Picker Component -->
+    <div class="card" data-controller="file-picker">
+        <div class="card-header">File Picker</div>
+        <p>Select a file from your device using the native Android file picker:</p>
+        <button data-action="click->file-picker#openFilePicker">Select File</button>
+        <div class="result" data-file-picker-target="result">No file selected</div>
+        <img class="file-preview" data-file-picker-target="preview">
+    </div>
+
+    <!-- Toast Component -->
+    <div class="card" data-controller="toast">
+        <div class="card-header">Toast Messages</div>
+        <p>Show a native Android toast message:</p>
+        <button data-action="click->toast#showShort">Show Short Toast</button>
+        <button data-action="click->toast#showLong">Show Long Toast</button>
+    </div>
+
+    <!-- Dialog Component -->
+    <div class="card" data-controller="dialog">
+        <div class="card-header">Dialog</div>
+        <p>Show a native Android dialog:</p>
+        <button data-action="click->dialog#showAlert">Show Alert Dialog</button>
+        <button data-action="click->dialog#showConfirm">Show Confirm Dialog</button>
+        <div class="result" data-dialog-target="result">No response yet</div>
+    </div>
+
+    <!-- Share Component -->
+    <div class="card" data-controller="share">
+        <div class="card-header">Share</div>
+        <p>Share content using the native Android share sheet:</p>
+        <button data-action="click->share#shareText">Share Text</button>
+        <button data-action="click->share#shareUrl">Share URL</button>
+    </div>
+
+    <!-- Location Component -->
+    <div class="card" data-controller="location">
+        <div class="card-header">Location</div>
+        <p>Get the current location using native Android location services:</p>
+        <button data-action="click->location#getCurrentLocation">Get Current Location</button>
+        <div class="result" data-location-target="result">No location data</div>
+    </div>
+
+    <!-- Load Stimulus -->
+    <script src="https://unpkg.com/@hotwired/stimulus@3.2.2/dist/stimulus.js"></script>
+    
+    <script>
+        // Initialize Stimulus application
+        const application = Stimulus.Application.start();
+
+        // File Picker Controller
+        application.register("file-picker", class extends Stimulus.Controller {
+            static targets = ["result", "preview"];
+
+            connect() {
+                console.log("File Picker controller connected");
+                // Register for native events
+                document.addEventListener("strada:file-picker:result", this.handleFileResult.bind(this));
+                document.addEventListener("strada:result", this.handleFileResult.bind(this));
+            }
+
+            openFilePicker() {
+                console.log("Opening file picker...");
+                // Send message to native bridge
+                if (window.Strada && window.Strada["file-picker"]) {
+                    window.Strada["file-picker"].send("open", {
+                        mimeTypes: ["image/*", "application/pdf"],
+                        multiple: false
+                    });
+                } else {
+                    console.error("Strada bridge not available for file-picker");
+                    this.resultTarget.textContent = "Error: Strada bridge not available";
+                }
+            }
+
+            handleFileResult(event) {
+                console.log("File result received:", event.detail);
+                const fileData = event.detail;
+                
+                if (fileData.error) {
+                    this.resultTarget.textContent = `Error: ${fileData.error}`;
+                    return;
+                }
+                
+                if (fileData.files && fileData.files.length > 0) {
+                    const file = fileData.files[0];
+                    this.resultTarget.textContent = `Selected file: ${file.name} (${file.size} bytes, ${file.type})`;
+                    
+                    // If it's an image, show preview
+                    if (file.type.startsWith("image/") && file.uri) {
+                        this.previewTarget.src = file.uri;
+                        this.previewTarget.style.display = "block";
+                    } else {
+                        this.previewTarget.style.display = "none";
+                    }
+                } else {
+                    this.resultTarget.textContent = "No file selected";
+                    this.previewTarget.style.display = "none";
+                }
+            }
+        });
+
+        // Toast Controller
+        application.register("toast", class extends Stimulus.Controller {
+            connect() {
+                console.log("Toast controller connected");
+            }
+
+            showShort() {
+                if (window.Strada && window.Strada.toast) {
+                    window.Strada.toast.send("show", {
+                        message: "This is a short toast message",
+                        duration: "short"
+                    });
+                }
+            }
+
+            showLong() {
+                if (window.Strada && window.Strada.toast) {
+                    window.Strada.toast.send("show", {
+                        message: "This is a longer toast message that will stay visible for more time",
+                        duration: "long"
+                    });
+                }
+            }
+        });
+
+        // Dialog Controller
+        application.register("dialog", class extends Stimulus.Controller {
+            static targets = ["result"];
+
+            connect() {
+                console.log("Dialog controller connected");
+                document.addEventListener("strada:dialog:result", this.handleDialogResult.bind(this));
+            }
+
+            showAlert() {
+                if (window.Strada && window.Strada.dialog) {
+                    window.Strada.dialog.send("alert", {
+                        title: "Alert Dialog",
+                        message: "This is a native Android alert dialog",
+                        buttonText: "OK"
+                    });
+                }
+            }
+
+            showConfirm() {
+                if (window.Strada && window.Strada.dialog) {
+                    window.Strada.dialog.send("confirm", {
+                        title: "Confirm Action",
+                        message: "Are you sure you want to proceed?",
+                        positiveButton: "Yes",
+                        negativeButton: "No"
+                    });
+                }
+            }
+
+            handleDialogResult(event) {
+                console.log("Dialog result received:", event.detail);
+                const result = event.detail;
+                
+                if (result.type === "alert") {
+                    this.resultTarget.textContent = "Alert dialog dismissed";
+                } else if (result.type === "confirm") {
+                    this.resultTarget.textContent = `Confirm dialog result: ${result.confirmed ? "Yes" : "No"}`;
+                }
+            }
+        });
+
+        // Share Controller
+        application.register("share", class extends Stimulus.Controller {
+            connect() {
+                console.log("Share controller connected");
+            }
+
+            shareText() {
+                if (window.Strada && window.Strada.share) {
+                    window.Strada.share.send("share", {
+                        text: "Check out this awesome Strada bridge for Tauri!",
+                        title: "Share Text"
+                    });
+                }
+            }
+
+            shareUrl() {
+                if (window.Strada && window.Strada.share) {
+                    window.Strada.share.send("share", {
+                        url: "https://github.com/oksanassss/tauri-openhands",
+                        title: "Tauri OpenHands Project"
+                    });
+                }
+            }
+        });
+
+        // Location Controller
+        application.register("location", class extends Stimulus.Controller {
+            static targets = ["result"];
+
+            connect() {
+                console.log("Location controller connected");
+                document.addEventListener("strada:location:result", this.handleLocationResult.bind(this));
+            }
+
+            getCurrentLocation() {
+                if (window.Strada && window.Strada.location) {
+                    this.resultTarget.textContent = "Requesting location...";
+                    window.Strada.location.send("get", {
+                        accuracy: "high"
+                    });
+                }
+            }
+
+            handleLocationResult(event) {
+                console.log("Location result received:", event.detail);
+                const location = event.detail;
+                
+                if (location.error) {
+                    this.resultTarget.textContent = `Error: ${location.error}`;
+                    return;
+                }
+                
+                if (location.latitude && location.longitude) {
+                    this.resultTarget.textContent = `Location: ${location.latitude}, ${location.longitude}`;
+                    if (location.accuracy) {
+                        this.resultTarget.textContent += ` (accuracy: ${location.accuracy} meters)`;
+                    }
+                } else {
+                    this.resultTarget.textContent = "No location data available";
+                }
+            }
+        });
+    </script>
+</body>
+</html>
