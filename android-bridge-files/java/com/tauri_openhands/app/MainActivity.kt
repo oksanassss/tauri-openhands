@@ -59,22 +59,20 @@ class MainActivity : TauriActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView(webView: WebView) {
-        // Enable JavaScript
+        // Enable JavaScript and DOM storage
         webView.settings.javaScriptEnabled = true
-        
-        // Enable DOM storage
         webView.settings.domStorageEnabled = true
         
-        // Set the WebView reference in the bridge manager
-        bridgeManager.setWebView(webView)
+        // Enable Strada bridge support
+        bridgeManager = webView.enableStradaBridge(this)
         
-        // For testing, load our test HTML in debug mode
+        // For testing, load the Stimulus demo site in debug mode
         if (BuildConfig.DEBUG) {
-            // Load our test page directly
-            webView.loadUrl("file:///android_asset/strada-bridge-demo.html")
+            // Load the Stimulus demo site for testing Hotwire-compatible pages
+            webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
             
-            // For testing with the Stimulus demo site
-            // webView.loadUrl("https://stimulusjs.demo.tebe.ch/")
+            // Alternatively, load our test page directly
+            // webView.loadUrlWithStrada("file:///android_asset/strada-bridge-demo.html", bridgeManager)
         }
     }
 
