@@ -439,19 +439,38 @@ class StradaBridgeManager(private val context: Context) {
     inner class GenericComponent(name: String) : NativeComponent(name) {
         override fun handleMessage(message: Message) {
             Log.d(TAG, "Generic component received message: $message")
-            // Forward to Rust backend
-            val rustCommand = "strada_bridge_handle_message"
-            val args = mapOf(
-                "component" to message.component,
-                "event" to message.event,
-                "data" to message.data.toString()
-            )
             
-            // This would call into the Rust backend
-            // For now, just log the message
-            Log.d(TAG, "Would call Rust command: $rustCommand with args: $args")
+            // Forward to Rust backend using Tauri's invoke mechanism
+            val rustCommand = "handle_strada_message"
+            val jsonData = JSONObject().apply {
+                put("component", message.component)
+                put("event", message.event)
+                put("data", JSONObject(message.data))
+            }
             
-            // Send a generic response back to web
+            // Create a JSON string for the Rust command
+            val jsonMessage = jsonData.toString()
+            Log.d(TAG, "Invoking Rust command: $rustCommand with args: $jsonMessage")
+            
+            // Use the WebView to execute JavaScript that calls the Tauri API
+            webView?.post {
+                val jsCode = """
+                    window.__TAURI__.invoke('$rustCommand', ${jsonMessage})
+                        .then(function(response) {
+                            console.log('Rust command response:', response);
+                            // If the response contains data to send back to the web
+                            if (response && response.sendToWeb) {
+                                window.StradaReceiveMessage(JSON.stringify(response.data));
+                            }
+                        })
+                        .catch(function(error) {
+                            console.error('Error invoking Rust command:', error);
+                        });
+                """
+                webView?.evaluateJavascript(jsCode, null)
+            }
+            
+            // Also send a generic response back to web immediately
             sendToWeb(name, "received", mapOf(
                 "status" to "ok",
                 "message" to "Message received by native component",
@@ -833,6 +852,44 @@ class StradaBridgeManager(private val context: Context) {
                     sendToWeb(name, "error", mapOf("error" to "Location functionality not yet implemented"))
                 }
             }
+        }
+    }
+    
+    /**
+     * Receive a message from the Rust backend and forward it to the WebView.
+     * This method is called from JavaScript using the JavascriptInterface.
+     */
+    @JavascriptInterface
+    fun receiveFromRust(messageJson: String) {
+        try {
+            Log.d(TAG, "Received message from Rust: $messageJson")
+            
+            // Parse the message
+            val json = JSONObject(messageJson)
+            val component = json.getString("component")
+            val event = json.getString("event")
+            val data = json.getJSONObject("data")
+            
+            // Convert JSONObject to Map
+            val dataMap = mutableMapOf<String, Any>()
+            val keys = data.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                dataMap[key] = data.get(key)
+            }
+            
+            // Forward to WebView
+            sendToWeb(component, event, dataMap)
+            
+            // If this is a component-specific message, also notify the component
+            val componentObj = components[component]
+            if (componentObj != null) {
+                Log.d(TAG, "Notifying component $component of event $event")
+                // You could add component-specific handling here if needed
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing message from Rust", e)
         }
     }
 }

@@ -102,6 +102,14 @@
         <button data-action="click->location#getCurrentLocation">Get Current Location</button>
         <div class="result" data-location-target="result">No location data</div>
     </div>
+    
+    <!-- Custom Component for Rust Backend Integration -->
+    <div class="card" data-controller="custom">
+        <div class="card-header">Rust Backend Integration</div>
+        <p>Send a message to the Rust backend and receive a response:</p>
+        <button data-action="click->custom#sendAction">Send to Rust Backend</button>
+        <div class="result" data-custom-target="result">No response yet</div>
+    </div>
 
     <!-- Load Stimulus -->
     <script src="https://unpkg.com/@hotwired/stimulus@3.2.2/dist/stimulus.js"></script>
@@ -289,6 +297,57 @@
                 } else {
                     this.resultTarget.textContent = "No location data available";
                 }
+            }
+        });
+        
+        // Custom Controller for Rust Backend Integration
+        application.register("custom", class extends Stimulus.Controller {
+            static targets = ["result"];
+
+            connect() {
+                console.log("Custom controller connected");
+                // Listen for events from the Rust backend
+                document.addEventListener("strada:custom:rust-result", this.handleRustResult.bind(this));
+                document.addEventListener("strada:custom:received", this.handleReceived.bind(this));
+            }
+
+            sendAction() {
+                this.resultTarget.textContent = "Sending message to Rust backend...";
+                
+                if (window.Strada && window.Strada.custom) {
+                    // Send a message to the native bridge, which will forward it to Rust
+                    window.Strada.custom.send("action", {
+                        timestamp: new Date().toISOString(),
+                        message: "Hello from JavaScript!",
+                        data: {
+                            value1: Math.random() * 100,
+                            value2: Math.random() * 100,
+                            text: "This is a test message from the web"
+                        }
+                    });
+                } else {
+                    this.resultTarget.textContent = "Error: Strada bridge not available for custom component";
+                }
+            }
+            
+            handleReceived(event) {
+                console.log("Received acknowledgment:", event.detail);
+                this.resultTarget.textContent = "Message sent to native bridge, waiting for Rust backend...";
+            }
+
+            handleRustResult(event) {
+                console.log("Rust result received:", event.detail);
+                const result = event.detail;
+                
+                // Format the result nicely
+                let formattedResult = `Processed by: ${result.processedBy}\n`;
+                formattedResult += `Rust timestamp: ${result.rustTimestamp}\n`;
+                formattedResult += `Original timestamp: ${result.originalTimestamp}\n`;
+                formattedResult += `Message: ${result.message}\n`;
+                formattedResult += `Random value: ${result.randomValue}`;
+                
+                this.resultTarget.textContent = formattedResult;
+                this.resultTarget.style.whiteSpace = "pre-line";
             }
         });
     </script>

@@ -9,13 +9,20 @@ pub struct StradaMessage {
     pub data: serde_json::Value,
 }
 
+/// Response structure for Strada bridge messages
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StradaResponse {
+    pub sendToWeb: bool,
+    pub data: Option<StradaMessage>,
+}
+
 /// Handles messages from the Strada bridge
 #[tauri::command]
 pub fn handle_strada_message<R: Runtime>(
     app: AppHandle<R>,
     window: Window<R>,
     message: StradaMessage,
-) -> Result<(), String> {
+) -> Result<StradaResponse, String> {
     println!(
         "Received Strada message: component={}, event={}",
         message.component, message.event
@@ -29,26 +36,38 @@ pub fn handle_strada_message<R: Runtime>(
             // and return the result to the web content
             
             // For now, just emit an event back to the frontend
+            let response_message = StradaMessage {
+                component: "filePicker".to_string(),
+                event: "result".to_string(),
+                data: serde_json::json!({
+                    "fileName": "example.txt",
+                    "fileSize": 1024,
+                    "mimeType": "text/plain",
+                }),
+            };
+            
+            // Also emit an event for other parts of the app to listen to
             window
-                .emit(
-                    "strada-event",
-                    StradaMessage {
-                        component: "filePicker".to_string(),
-                        event: "selected".to_string(),
-                        data: serde_json::json!({
-                            "fileName": "example.txt",
-                            "fileSize": 1024,
-                            "mimeType": "text/plain",
-                        }),
-                    },
-                )
+                .emit("strada-event", &response_message)
                 .map_err(|e| e.to_string())?;
+                
+            // Return the response to be sent back to the WebView
+            Ok(StradaResponse {
+                sendToWeb: true,
+                data: Some(response_message),
+            })
         }
         ("toast", "show") => {
             // Handle toast request
             // In a real implementation, you would show a toast
             // For now, just log the message
             println!("Toast message: {:?}", message.data);
+            
+            // No need to send anything back to the WebView
+            Ok(StradaResponse {
+                sendToWeb: false,
+                data: None,
+            })
         }
         ("dialog", event) => {
             // Handle dialog request
@@ -56,19 +75,25 @@ pub fn handle_strada_message<R: Runtime>(
             // and return the result to the web content
             println!("Dialog event: {}, data: {:?}", event, message.data);
             
-            // For now, just emit an event back to the frontend
+            // Create a response message
+            let response_message = StradaMessage {
+                component: "dialog".to_string(),
+                event: "result".to_string(),
+                data: serde_json::json!({
+                    "confirmed": true,
+                }),
+            };
+            
+            // Also emit an event for other parts of the app to listen to
             window
-                .emit(
-                    "strada-event",
-                    StradaMessage {
-                        component: "dialog".to_string(),
-                        event: "result".to_string(),
-                        data: serde_json::json!({
-                            "confirmed": true,
-                        }),
-                    },
-                )
+                .emit("strada-event", &response_message)
                 .map_err(|e| e.to_string())?;
+                
+            // Return the response to be sent back to the WebView
+            Ok(StradaResponse {
+                sendToWeb: true,
+                data: Some(response_message),
+            })
         }
         ("custom", "action") => {
             // Handle custom action
@@ -88,24 +113,34 @@ pub fn handle_strada_message<R: Runtime>(
                 "randomValue": rand::random::<u32>()
             });
             
-            // Send a reply back
+            // Create a response message
+            let response_message = StradaMessage {
+                component: "custom".to_string(),
+                event: "rust-result".to_string(),
+                data: rust_data,
+            };
+            
+            // Also emit an event for other parts of the app to listen to
             window
-                .emit(
-                    "strada-event",
-                    StradaMessage {
-                        component: "custom".to_string(),
-                        event: "rust-result".to_string(),
-                        data: rust_data,
-                    },
-                )
+                .emit("strada-event", &response_message)
                 .map_err(|e| e.to_string())?;
+                
+            // Return the response to be sent back to the WebView
+            Ok(StradaResponse {
+                sendToWeb: true,
+                data: Some(response_message),
+            })
         }
         _ => {
             println!("Unknown Strada message: {:?}", message);
+            
+            // No need to send anything back to the WebView
+            Ok(StradaResponse {
+                sendToWeb: false,
+                data: None,
+            })
         }
     }
-
-    Ok(())
 }
 
 /// Forwards a Strada message from Rust to the WebView
@@ -116,7 +151,29 @@ pub fn send_strada_message<R: Runtime>(
 ) -> Result<(), String> {
     // Emit an event to the frontend
     window
-        .emit("strada-message", message)
+        .emit("strada-message", &message)
+        .map_err(|e| e.to_string())?;
+    
+    // Also inject JavaScript to call the StradaNativeBridge.receiveFromRust method
+    let message_json = serde_json::to_string(&message)
+        .map_err(|e| e.to_string())?;
+    
+    // Escape single quotes in the JSON string
+    let escaped_json = message_json.replace('\'', "\\'");
+    
+    // Create JavaScript to call the receiveFromRust method
+    let js = format!(
+        "if (window.StradaNativeBridge && window.StradaNativeBridge.receiveFromRust) {{ 
+            window.StradaNativeBridge.receiveFromRust('{}'); 
+        }} else {{ 
+            console.error('StradaNativeBridge.receiveFromRust not available'); 
+        }}",
+        escaped_json
+    );
+    
+    // Execute the JavaScript
+    window
+        .eval(&js)
         .map_err(|e| e.to_string())?;
 
     Ok(())
