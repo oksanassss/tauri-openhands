@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime, Window};
+use tauri::{AppHandle, Emitter, Runtime, Window};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StradaMessage {
@@ -12,14 +12,15 @@ pub struct StradaMessage {
 /// Response structure for Strada bridge messages
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StradaResponse {
-    pub sendToWeb: bool,
+    #[serde(rename = "sendToWeb")]
+    pub send_to_web: bool,
     pub data: Option<StradaMessage>,
 }
 
 /// Handles messages from the Strada bridge
 #[tauri::command]
 pub fn handle_strada_message<R: Runtime>(
-    app: AppHandle<R>,
+    _app: AppHandle<R>,
     window: Window<R>,
     message: StradaMessage,
 ) -> Result<StradaResponse, String> {
@@ -53,7 +54,7 @@ pub fn handle_strada_message<R: Runtime>(
                 
             // Return the response to be sent back to the WebView
             Ok(StradaResponse {
-                sendToWeb: true,
+                send_to_web: true,
                 data: Some(response_message),
             })
         }
@@ -65,7 +66,7 @@ pub fn handle_strada_message<R: Runtime>(
             
             // No need to send anything back to the WebView
             Ok(StradaResponse {
-                sendToWeb: false,
+                send_to_web: false,
                 data: None,
             })
         }
@@ -91,7 +92,7 @@ pub fn handle_strada_message<R: Runtime>(
                 
             // Return the response to be sent back to the WebView
             Ok(StradaResponse {
-                sendToWeb: true,
+                send_to_web: true,
                 data: Some(response_message),
             })
         }
@@ -127,7 +128,7 @@ pub fn handle_strada_message<R: Runtime>(
                 
             // Return the response to be sent back to the WebView
             Ok(StradaResponse {
-                sendToWeb: true,
+                send_to_web: true,
                 data: Some(response_message),
             })
         }
@@ -136,7 +137,7 @@ pub fn handle_strada_message<R: Runtime>(
             
             // No need to send anything back to the WebView
             Ok(StradaResponse {
-                sendToWeb: false,
+                send_to_web: false,
                 data: None,
             })
         }
@@ -171,9 +172,14 @@ pub fn send_strada_message<R: Runtime>(
         escaped_json
     );
     
-    // Execute the JavaScript
+    // Execute the JavaScript using eval
+    let window_clone = window.clone();
     window
-        .eval(&js)
+        .run_on_main_thread(move || {
+            let _ = window_clone.webviews().first().map(|webview| {
+                let _ = webview.eval(&js);
+            });
+        })
         .map_err(|e| e.to_string())?;
 
     Ok(())

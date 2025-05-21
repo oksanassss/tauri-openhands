@@ -1,14 +1,15 @@
 // strada-bridge.js
 // This file provides integration between Tauri's JavaScript API and the Strada bridge
 
-import { invoke, event } from '@tauri-apps/api';
+import { invoke } from '@tauri-apps/api/tauri';
+import { listen } from '@tauri-apps/api/event';
 
 // Initialize the Strada bridge
 export function initStradaBridge() {
   console.log('Initializing Strada bridge');
   
   // Listen for strada-event events from Rust
-  event.listen('strada-event', (event) => {
+  listen('strada-event', (event) => {
     console.log('Received strada-event from Rust:', event);
     
     // Forward the event to the Strada bridge

@@ -6,8 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import app.tauri.android.TauriActivity
-import com.tauri_openhands.app.BuildConfig
+import com.tauri_openhands.app.TauriActivity
 
 class MainActivity : TauriActivity() {
     private val TAG = "MainActivity"
@@ -21,6 +20,9 @@ class MainActivity : TauriActivity() {
 
         // Initialize the bridge manager
         bridgeManager = StradaBridgeManager(this)
+        
+        // Log that the bridge manager has been initialized
+        Log.d(TAG, "StradaBridgeManager initialized")
     }
     
     /**
@@ -56,23 +58,20 @@ class MainActivity : TauriActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView(webView: WebView) {
-        // Add JavaScript interface
-        webView.addJavascriptInterface(bridgeManager, "StradaNativeBridge")
-
-        // Enable JavaScript
+        // Enable JavaScript and DOM storage
         webView.settings.javaScriptEnabled = true
-
-        // Inject Strada JavaScript API
-        injectStradaJavaScript(webView)
+        webView.settings.domStorageEnabled = true
         
-        // For testing, load our test HTML in debug mode
-        if (BuildConfig.DEBUG) {
-            // Load our test page directly
-            webView.loadUrl("file:///android_asset/strada-test.html")
-            
-            // For testing with the Stimulus demo site
-            // webView.loadUrl("https://stimulusjs.demo.tebe.ch/")
-        }
+        // Enable Strada bridge support
+        bridgeManager = webView.enableStradaBridge(this)
+        
+        // For testing, always load our Stimulus test controllers page
+        // Load our custom Stimulus test page with controllers
+        webView.loadUrlWithStrada("file:///android_asset/strada-test-controllers.html", bridgeManager)
+        
+        // Alternative options:
+        // webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
+        // webView.loadUrlWithStrada("file:///android_asset/strada-bridge-demo.html", bridgeManager)
     }
 
     private fun getWebViewId(): Int {
@@ -92,106 +91,5 @@ class MainActivity : TauriActivity() {
         return resources.getIdentifier("webview", "id", packageName)
     }
 
-    private fun injectStradaJavaScript(webView: WebView) {
-        // Inject the Strada JavaScript API when the page loads
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                Log.d(TAG, "Page finished loading: $url")
-
-                // Inject the Strada JavaScript API
-                val stradaJs = """
-                    if (!window.Strada) {
-                        window.Strada = {
-                            registerComponent: function(name) {
-                                if (!this[name]) {
-                                    this[name] = {
-                                        send: function(event, data) {
-                                            const message = {
-                                                component: name,
-                                                event: event,
-                                                data: data || {}
-                                            };
-                                            window.StradaNativeBridge.receiveMessage(JSON.stringify(message));
-                                            console.log('Strada: Sent message', message);
-                                            return true;
-                                        }
-                                    };
-                                }
-                                return this[name];
-                            },
-
-                            // Scan the DOM for data-controller attributes and register components
-                            scanForComponents: function() {
-                                const elements = document.querySelectorAll('[data-controller]');
-                                elements.forEach(function(element) {
-                                    const controllers = element.getAttribute('data-controller').split(' ');
-                                    controllers.forEach(function(controller) {
-                                        if (!window.Strada[controller]) {
-                                            window.Strada[controller] = window.Strada.registerComponent(controller);
-                                            console.log('Strada: Registered component', controller);
-                                        }
-                                    });
-                                });
-                            }
-                        };
-
-                        // Function to receive messages from native code
-                        window.StradaReceiveMessage = function(messageJson) {
-                            try {
-                                const message = JSON.parse(messageJson);
-                                console.log('Strada: Received message from native', message);
-                                
-                                // Dispatch a custom event
-                                const event = new CustomEvent('strada:' + message.component + ':' + message.event, {
-                                    detail: message.data,
-                                    bubbles: true
-                                });
-                                document.dispatchEvent(event);
-                                return true;
-                            } catch (e) {
-                                console.error('Strada: Error processing message', e);
-                                return false;
-                            }
-                        };
-
-                        // Observe DOM changes to detect new components
-                        const observer = new MutationObserver(function() {
-                            window.Strada.scanForComponents();
-                        });
-
-                        // Start observing once the body is available
-                        if (document.body) {
-                            observer.observe(document.body, {
-                                childList: true,
-                                subtree: true,
-                                attributes: true,
-                                attributeFilter: ['data-controller']
-                            });
-                            
-                            // Initial scan
-                            window.Strada.scanForComponents();
-                            console.log('Strada: Bridge initialized');
-                        } else {
-                            // Wait for body to be available
-                            document.addEventListener('DOMContentLoaded', function() {
-                                observer.observe(document.body, {
-                                    childList: true,
-                                    subtree: true,
-                                    attributes: true,
-                                    attributeFilter: ['data-controller']
-                                });
-                                
-                                // Initial scan
-                                window.Strada.scanForComponents();
-                                console.log('Strada: Bridge initialized');
-                            });
-                        }
-                    }
-                """.trimIndent()
-
-                view?.evaluateJavascript(stradaJs, null)
-            }
-        }
-    }
+    // The injectStradaJavaScript method is now handled by the StradaBridgeManager
 }
