@@ -68,8 +68,7 @@ class MainActivity : TauriActivity() {
         // Load the Stimulus demo page
         webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
         
-        // Uncomment the line below to load the bundled web content instead
-        // No need to manually load a URL - Tauri will load the bundled web content automatically
+        Log.d(TAG, "WebView setup complete - loaded Stimulus demo page")
     }
 
     private fun getWebViewId(): Int {
