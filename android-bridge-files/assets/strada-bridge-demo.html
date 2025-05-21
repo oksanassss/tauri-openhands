@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strada Bridge Demo</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            min-height: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .form-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .status {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .connected {
+            color: #4CAF50;
+        }
+        .disconnected {
+            color: #f44336;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h2 {
+            margin: 0;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge-success {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .badge-warning {
+            background-color: #ff9800;
+            color: white;
+        }
+        .badge-error {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Strada Bridge Demo</h1>
+    <p>This page demonstrates the Strada bridge integration between web content and native Android components.</p>
+    
+    <div class="card" data-controller="toast">
+        <div class="header">
+            <h2>Toast Component</h2>
+            <span class="badge badge-warning" id="toastStatus">Connecting...</span>
+        </div>
+        <p>Display native Android toast messages from web content</p>
+        <div class="form-group">
+            <label for="toastMessage">Message:</label>
+            <input type="text" id="toastMessage" value="Hello from Strada Bridge!">
+        </div>
+        <button id="showToast" disabled>Show Toast</button>
+        <button id="showLongToast" disabled>Show Long Toast</button>
+    </div>
+    
+    <div class="card" data-controller="dialog">
+        <div class="header">
+            <h2>Dialog Component</h2>
+            <span class="badge badge-warning" id="dialogStatus">Connecting...</span>
+        </div>
+        <p>Display native Android dialogs from web content</p>
+        <div class="form-group">
+            <label for="dialogTitle">Title:</label>
+            <input type="text" id="dialogTitle" value="Strada Dialog">
+        </div>
+        <div class="form-group">
+            <label for="dialogMessage">Message:</label>
+            <textarea id="dialogMessage" rows="2">This is a native dialog message from the web!</textarea>
+        </div>
+        <button id="showAlert" disabled>Show Alert</button>
+        <button id="showConfirm" disabled>Show Confirm</button>
+        <div class="result" id="dialogResult">No dialog result</div>
+    </div>
+    
+    <div class="card" data-controller="filePicker">
+        <div class="header">
+            <h2>File Picker Component</h2>
+            <span class="badge badge-warning" id="filePickerStatus">Connecting...</span>
+        </div>
+        <p>Open the native Android file picker from web content</p>
+        <div class="form-group">
+            <label for="mimeType">MIME Type:</label>
+            <input type="text" id="mimeType" value="*/*">
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="multipleFiles"> Allow multiple files
+            </label>
+        </div>
+        <button id="openFilePicker" disabled>Open File Picker</button>
+        <div class="result" id="filePickerResult">No file selected</div>
+    </div>
+    
+    <div class="card" data-controller="share">
+        <div class="header">
+            <h2>Share Component</h2>
+            <span class="badge badge-warning" id="shareStatus">Connecting...</span>
+        </div>
+        <p>Share content using the native Android share sheet</p>
+        <div class="form-group">
+            <label for="shareText">Text to share:</label>
+            <textarea id="shareText" rows="2">Check out this awesome Strada Bridge demo!</textarea>
+        </div>
+        <button id="shareContent" disabled>Share Content</button>
+    </div>
+    
+    <div class="card" data-controller="custom">
+        <div class="header">
+            <h2>Custom Component</h2>
+            <span class="badge badge-warning" id="customStatus">Connecting...</span>
+        </div>
+        <p>Test a custom component that demonstrates the bridge extensibility</p>
+        <button id="customAction" disabled>Get Device Info</button>
+        <div class="result" id="customResult">No custom result</div>
+    </div>
+    
+    <script>
+        // Wait for Strada to be initialized
+        function waitForStrada(callback) {
+            if (window.Strada) {
+                callback();
+            } else {
+                setTimeout(() => waitForStrada(callback), 100);
+            }
+        }
+        
+        waitForStrada(() => {
+            console.log('Strada is available');
+            
+            // Toast component
+            setupComponent('toast', () => {
+                document.getElementById('showToast').addEventListener('click', () => {
+                    const message = document.getElementById('toastMessage').value;
+                    window.Strada.toast.send('show', { text: message });
+                });
+                
+                document.getElementById('showLongToast').addEventListener('click', () => {
+                    const message = document.getElementById('toastMessage').value;
+                    window.Strada.toast.send('show', { text: message, long: true });
+                });
+            });
+            
+            // Dialog component
+            setupComponent('dialog', () => {
+                document.getElementById('showAlert').addEventListener('click', () => {
+                    const title = document.getElementById('dialogTitle').value;
+                    const text = document.getElementById('dialogMessage').value;
+                    
+                    window.Strada.dialog.send('alert', { 
+                        title: title,
+                        text: text,
+                        buttonText: 'OK'
+                    });
+                });
+                
+                document.getElementById('showConfirm').addEventListener('click', () => {
+                    const title = document.getElementById('dialogTitle').value;
+                    const text = document.getElementById('dialogMessage').value;
+                    
+                    window.Strada.dialog.send('confirm', {
+                        title: title,
+                        text: text,
+                        okText: 'Yes',
+                        cancelText: 'No'
+                    });
+                });
+                
+                // Listen for dialog response
+                document.addEventListener('strada:dialog:clicked', (event) => {
+                    const data = event.detail;
+                    document.getElementById('dialogResult').textContent = 
+                        `Dialog result: ${data.button}`;
+                });
+            });
+            
+            // File picker component
+            setupComponent('filePicker', () => {
+                document.getElementById('openFilePicker').addEventListener('click', () => {
+                    const mimeType = document.getElementById('mimeType').value;
+                    const multiple = document.getElementById('multipleFiles').checked;
+                    
+                    window.Strada.filePicker.send('open', {
+                        mimeType: mimeType,
+                        multiple: multiple
+                    });
+                });
+                
+                // Listen for file picker response
+                document.addEventListener('strada:filePicker:selected', (event) => {
+                    const data = event.detail;
+                    const files = data.files || [];
+                    
+                    if (files.length === 0) {
+                        document.getElementById('filePickerResult').textContent = 'No files selected';
+                        return;
+                    }
+                    
+                    let result = `Selected ${files.length} file(s):\n\n`;
+                    
+                    files.forEach((file, index) => {
+                        result += `File ${index + 1}:\n`;
+                        result += `Name: ${file.name}\n`;
+                        result += `Size: ${formatFileSize(file.size)}\n`;
+                        result += `Type: ${file.type}\n`;
+                        
+                        if (index < files.length - 1) {
+                            result += '\n';
+                        }
+                    });
+                    
+                    document.getElementById('filePickerResult').textContent = result;
+                });
+                
+                document.addEventListener('strada:filePicker:cancelled', () => {
+                    document.getElementById('filePickerResult').textContent = 'File selection cancelled';
+                });
+                
+                document.addEventListener('strada:filePicker:error', (event) => {
+                    document.getElementById('filePickerResult').textContent = 
+                        `Error: ${event.detail.error}`;
+                });
+            });
+            
+            // Share component
+            setupComponent('share', () => {
+                document.getElementById('shareContent').addEventListener('click', () => {
+                    const text = document.getElementById('shareText').value;
+                    
+                    window.Strada.share.send('text', {
+                        text: text,
+                        title: 'Share via'
+                    });
+                });
+            });
+            
+            // Custom component
+            setupComponent('custom', () => {
+                document.getElementById('customAction').addEventListener('click', () => {
+                    window.Strada.custom.send('action', { 
+                        timestamp: new Date().toISOString() 
+                    });
+                });
+                
+                document.addEventListener('strada:custom:result', (event) => {
+                    const data = event.detail;
+                    document.getElementById('customResult').textContent = 
+                        `Native Device Info:\n` +
+                        `Manufacturer: ${data.manufacturer}\n` +
+                        `Model: ${data.model}\n` +
+                        `OS Version: ${data.osVersion}\n` +
+                        `Timestamp: ${new Date(data.timestamp).toLocaleString()}\n` +
+                        `Received: ${new Date(data.receivedTimestamp).toLocaleString()}\n\n` +
+                        `Waiting for Rust backend response...`;
+                });
+                
+                document.addEventListener('strada:custom:rust-result', (event) => {
+                    const data = event.detail;
+                    const currentText = document.getElementById('customResult').textContent;
+                    
+                    // Append the Rust result to the existing text
+                    document.getElementById('customResult').textContent = 
+                        currentText.replace('Waiting for Rust backend response...', 
+                        `Rust Backend Response:\n` +
+                        `Processed By: ${data.processedBy}\n` +
+                        `Rust Timestamp: ${new Date(data.rustTimestamp).toLocaleString()}\n` +
+                        `Original Timestamp: ${data.originalTimestamp}\n` +
+                        `Message: ${data.message}\n` +
+                        `Random Value: ${data.randomValue}`);
+                });
+            });
+            
+            // Helper function to format file size
+            function formatFileSize(bytes) {
+                if (bytes === -1) return 'Unknown';
+                
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let size = bytes;
+                let unitIndex = 0;
+                
+                while (size >= 1024 && unitIndex < units.length - 1) {
+                    size /= 1024;
+                    unitIndex++;
+                }
+                
+                return `${size.toFixed(2)} ${units[unitIndex]}`;
+            }
+            
+            // Helper function to setup a component
+            function setupComponent(name, setupFn) {
+                const statusElement = document.getElementById(`${name}Status`);
+                
+                // Send connect event
+                if (window.Strada[name]) {
+                    window.Strada[name].send('connect');
+                    
+                    // Listen for connected event
+                    document.addEventListener(`strada:${name}:connected`, () => {
+                        statusElement.textContent = 'Connected';
+                        statusElement.classList.remove('badge-warning');
+                        statusElement.classList.add('badge-success');
+                        
+                        // Enable all buttons for this component
+                        document.querySelectorAll(`[data-controller="${name}"] button`).forEach(button => {
+                            button.disabled = false;
+                        });
+                        
+                        // Run component-specific setup
+                        setupFn();
+                    });
+                    
+                    // Listen for error events
+                    document.addEventListener(`strada:${name}:error`, (event) => {
+                        console.error(`Error in ${name} component:`, event.detail);
+                        statusElement.textContent = 'Error';
+                        statusElement.classList.remove('badge-warning', 'badge-success');
+                        statusElement.classList.add('badge-error');
+                    });
+                } else {
+                    statusElement.textContent = 'Not Available';
+                    statusElement.classList.remove('badge-warning');
+                    statusElement.classList.add('badge-error');
+                }
+            }
+            
+            // Log all Strada events for debugging
+            document.addEventListener('strada:*', (event) => {
+                console.log('Strada event:', event.type, event.detail);
+            });
+        });
+    </script>
+</body>
+</html>

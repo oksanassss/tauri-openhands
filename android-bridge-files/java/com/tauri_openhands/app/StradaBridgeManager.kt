@@ -15,12 +15,34 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * StradaBridgeManager handles communication between web content and native Android components.
  * It detects data-controller attributes in the DOM and routes messages to the appropriate native components.
+ * 
+ * This implementation is based on the Hotwire Strada pattern for native bridge communication.
  */
-class StradaBridgeManager(
-    private val context: Context,
-    private val activity: Activity,
-    private val webView: WebView
-) {
+class StradaBridgeManager(private val context: Context) {
+    private var activity: Activity? = null
+    private var webView: WebView? = null
+    
+    init {
+        if (context is Activity) {
+            activity = context
+        }
+    }
+    
+    /**
+     * Set the WebView instance to use for JavaScript communication
+     */
+    fun setWebView(webView: WebView) {
+        this.webView = webView
+        initialize()
+    }
+    
+    /**
+     * Handle activity results from the parent activity
+     */
+    fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        val filePickerComponent = components["filePicker"] as? FilePickerComponent
+        filePickerComponent?.handleActivityResult(requestCode, resultCode, data)
+    }
     companion object {
         private const val TAG = "StradaBridgeManager"
         private const val BRIDGE_NAME = "StradaBridge"
@@ -31,79 +53,118 @@ class StradaBridgeManager(
     /**
      * Initialize the bridge by injecting JavaScript and setting up the JavascriptInterface.
      */
-    fun initialize() {
+    private fun initialize() {
+        val webView = this.webView ?: return
+        
         // Add JavaScript interface
-        webView.addJavascriptInterface(StradaJavaScriptInterface(), BRIDGE_NAME)
+        webView.addJavascriptInterface(this, "StradaNativeBridge")
 
         // Inject the Strada JavaScript bridge
-        injectStradaJavaScript()
+        injectStradaJavaScript(webView)
 
         // Scan for data-controller attributes when page is loaded
         webView.setOnPageFinishedListener { url ->
+            Log.d(TAG, "Page finished loading: $url")
             scanForControllers()
+            
+            // Send connected events to all registered components
+            components.forEach { (name, _) ->
+                sendToWeb(name, "connected", mapOf("status" to "ready"))
+            }
         }
     }
 
     /**
      * Inject the Strada JavaScript bridge into the WebView.
      */
-    private fun injectStradaJavaScript() {
+    private fun injectStradaJavaScript(webView: WebView) {
         val js = """
             if (!window.Strada) {
-                window.Strada = {};
-                
-                // Create a proxy to handle component access
-                window.Strada = new Proxy({}, {
-                    get: function(target, prop) {
-                        if (prop === 'registerComponent') {
-                            return function(name) {
-                                if (!target[name]) {
-                                    target[name] = {
-                                        send: function(event, data) {
-                                            const message = {
-                                                component: name,
-                                                event: event,
-                                                data: data || {}
-                                            };
-                                            window.StradaBridge.sendMessage(JSON.stringify(message));
-                                            return true;
-                                        }
-                                    };
-                                }
-                                return target[name];
-                            };
-                        }
-                        
-                        // Auto-register components when accessed
-                        if (!target[prop] && typeof prop === 'string' && prop !== 'toJSON') {
-                            target[prop] = {
+                window.Strada = {
+                    registerComponent: function(name) {
+                        if (!this[name]) {
+                            this[name] = {
                                 send: function(event, data) {
                                     const message = {
-                                        component: prop,
+                                        component: name,
                                         event: event,
                                         data: data || {}
                                     };
-                                    window.StradaBridge.sendMessage(JSON.stringify(message));
+                                    window.StradaNativeBridge.receiveMessage(JSON.stringify(message));
+                                    console.log('Strada: Sent message', message);
                                     return true;
                                 }
                             };
                         }
-                        
-                        return target[prop];
+                        return this[name];
+                    },
+
+                    // Scan the DOM for data-controller attributes and register components
+                    scanForComponents: function() {
+                        const elements = document.querySelectorAll('[data-controller]');
+                        elements.forEach(function(element) {
+                            const controllers = element.getAttribute('data-controller').split(' ');
+                            controllers.forEach(function(controller) {
+                                if (!window.Strada[controller]) {
+                                    window.Strada[controller] = window.Strada.registerComponent(controller);
+                                    console.log('Strada: Registered component', controller);
+                                }
+                            });
+                        });
                     }
-                });
-                
-                // Function to dispatch events from native to web
-                window.Strada.dispatchEvent = function(component, event, data) {
-                    const customEvent = new CustomEvent('strada:' + component + ':' + event, {
-                        detail: data,
-                        bubbles: true
-                    });
-                    document.dispatchEvent(customEvent);
-                    return true;
                 };
-                
-                console.log('Strada bridge initialized');
+
+                // Function to receive messages from native code
+                window.StradaReceiveMessage = function(messageJson) {
+                    try {
+                        const message = JSON.parse(messageJson);
+                        console.log('Strada: Received message from native', message);
+                        
+                        // Dispatch a custom event
+                        const event = new CustomEvent('strada:' + message.component + ':' + message.event, {
+                            detail: message.data,
+                            bubbles: true
+                        });
+                        document.dispatchEvent(event);
+                        return true;
+                    } catch (e) {
+                        console.error('Strada: Error processing message', e);
+                        return false;
+                    }
+                };
+
+                // Observe DOM changes to detect new components
+                const observer = new MutationObserver(function() {
+                    window.Strada.scanForComponents();
+                });
+
+                // Start observing once the body is available
+                if (document.body) {
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['data-controller']
+                    });
+                    
+                    // Initial scan
+                    window.Strada.scanForComponents();
+                    console.log('Strada: Bridge initialized');
+                } else {
+                    // Wait for body to be available
+                    document.addEventListener('DOMContentLoaded', function() {
+                        observer.observe(document.body, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,
+                            attributeFilter: ['data-controller']
+                        });
+                        
+                        // Initial scan
+                        window.Strada.scanForComponents();
+                        console.log('Strada: Bridge initialized');
+                    });
+                }
             }
         """.trimIndent()
         
@@ -114,6 +175,8 @@ class StradaBridgeManager(
      * Scan the DOM for data-controller attributes and register the corresponding components.
      */
     private fun scanForControllers() {
+        val webView = this.webView ?: return
+        
         val js = """
             (function() {
                 const controllers = document.querySelectorAll('[data-controller]');
@@ -122,10 +185,7 @@ class StradaBridgeManager(
                 controllers.forEach(element => {
                     const controllerNames = element.getAttribute('data-controller').split(' ');
                     controllerNames.forEach(name => {
-                        if (name === 'native' || name.startsWith('native--')) {
-                            const componentName = name === 'native' ? 'generic' : name.substring(8);
-                            result.push(componentName);
-                        }
+                        result.push(name);
                     });
                 });
                 
@@ -135,19 +195,24 @@ class StradaBridgeManager(
         
         webView.evaluateJavascript(js) { result ->
             try {
-                // Remove quotes from the result string
-                val jsonArray = result.trim('"').replace("\\\"", "\"")
-                Log.d(TAG, "Found controllers: $jsonArray")
-                
-                // Register components
-                val components = jsonArray.split(",")
-                components.forEach { componentName ->
-                    if (componentName.isNotEmpty()) {
-                        registerComponent(componentName.trim())
+                // Parse the JSON array of controller names
+                val jsonString = result.trim()
+                if (jsonString.startsWith("\"[") && jsonString.endsWith("]\"")) {
+                    // Remove the extra quotes and parse the JSON array
+                    val controllerNamesJson = jsonString.substring(1, jsonString.length - 1)
+                    val controllerNames = JSONObject("{\"names\":$controllerNamesJson}").getJSONArray("names")
+                    
+                    for (i in 0 until controllerNames.length()) {
+                        val name = controllerNames.getString(i)
+                        if (name.isNotEmpty()) {
+                            registerComponent(name.trim())
+                        }
                     }
+                } else {
+                    Log.d(TAG, "No controllers found or invalid format: $jsonString")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error parsing controllers", e)
+                Log.e(TAG, "Error parsing controllers: ${e.message}", e)
             }
         }
     }
@@ -166,10 +231,15 @@ class StradaBridgeManager(
     private fun getOrCreateComponent(name: String): NativeComponent {
         return components[name] ?: when (name) {
             "toast" -> ToastComponent(context)
-            "dialog" -> DialogComponent(context, activity)
-            "filePicker" -> FilePickerComponent(context, activity)
+            "dialog" -> DialogComponent(context)
+            "filePicker" -> FilePickerComponent(context)
+            "camera" -> CameraComponent(context)
+            "share" -> ShareComponent(context)
+            "notification" -> NotificationComponent(context)
+            "location" -> LocationComponent(context)
+            "custom" -> CustomComponent(name)
             else -> {
-                Log.w(TAG, "Unknown component: $name, creating generic component")
+                Log.d(TAG, "Creating generic component for: $name")
                 GenericComponent(name)
             }
         }.also {
@@ -180,7 +250,7 @@ class StradaBridgeManager(
     /**
      * Send a message to a component.
      */
-    fun sendMessage(messageJson: String) {
+    private fun sendMessage(messageJson: String) {
         try {
             val message = parseMessage(messageJson)
             val component = getOrCreateComponent(message.component)
@@ -194,12 +264,25 @@ class StradaBridgeManager(
      * Send a message from native to web.
      */
     fun sendToWeb(component: String, event: String, data: Map<String, Any>) {
+        val webView = this.webView ?: return
+        
         val jsonData = JSONObject(data).toString()
         val js = """
-            window.Strada.dispatchEvent('$component', '$event', $jsonData);
+            if (window.StradaReceiveMessage) {
+                const message = {
+                    component: '$component',
+                    event: '$event',
+                    data: $jsonData
+                };
+                window.StradaReceiveMessage(JSON.stringify(message));
+            } else {
+                console.error('Strada: StradaReceiveMessage not available');
+            }
         """.trimIndent()
         
-        webView.evaluateJavascript(js, null)
+        webView.post {
+            webView.evaluateJavascript(js, null)
+        }
     }
 
     /**
@@ -215,13 +298,21 @@ class StradaBridgeManager(
     }
 
     /**
-     * JavaScript interface for the Strada bridge.
+     * JavaScript interface method to receive messages from web content.
      */
-    inner class StradaJavaScriptInterface {
-        @JavascriptInterface
-        fun sendMessage(messageJson: String) {
-            Log.d(TAG, "Received message: $messageJson")
-            this@StradaBridgeManager.sendMessage(messageJson)
+    @JavascriptInterface
+    fun receiveMessage(messageJson: String) {
+        Log.d(TAG, "Received message from web: $messageJson")
+        
+        // Process the message on the main thread
+        val activity = this.activity
+        if (activity != null) {
+            activity.runOnUiThread {
+                sendMessage(messageJson)
+            }
+        } else {
+            // Fallback to direct processing if activity is not available
+            sendMessage(messageJson)
         }
     }
 
@@ -258,6 +349,62 @@ class StradaBridgeManager(
             // This would call into the Rust backend
             // For now, just log the message
             Log.d(TAG, "Would call Rust command: $rustCommand with args: $args")
+            
+            // Send a generic response back to web
+            sendToWeb(name, "received", mapOf(
+                "status" to "ok",
+                "message" to "Message received by native component",
+                "timestamp" to System.currentTimeMillis()
+            ))
+        }
+    }
+    
+    /**
+     * Custom component for demonstrating custom functionality
+     */
+    inner class CustomComponent(name: String) : NativeComponent(name) {
+        override fun handleMessage(message: Message) {
+            Log.d(TAG, "Custom component received message: $message")
+            
+            when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
+                "action" -> {
+                    // Get device info and send back to web
+                    val manufacturer = android.os.Build.MANUFACTURER
+                    val model = android.os.Build.MODEL
+                    val osVersion = android.os.Build.VERSION.RELEASE
+                    
+                    // Get timestamp from message if available
+                    val timestamp = message.data.optString("timestamp", "")
+                    
+                    sendToWeb(name, "result", mapOf(
+                        "manufacturer" to manufacturer,
+                        "model" to model,
+                        "osVersion" to osVersion,
+                        "timestamp" to timestamp,
+                        "receivedTimestamp" to System.currentTimeMillis()
+                    ))
+                    
+                    // Simulate a delayed response from Rust backend
+                    Thread {
+                        Thread.sleep(1000)
+                        sendToWeb(name, "rust-result", mapOf(
+                            "processedBy" to "Rust Backend",
+                            "rustTimestamp" to System.currentTimeMillis(),
+                            "originalTimestamp" to timestamp,
+                            "message" to "Hello from Rust backend!",
+                            "randomValue" to (Math.random() * 100).toInt()
+                        ))
+                    }.start()
+                }
+                else -> {
+                    Log.w(TAG, "Unknown event for custom component: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Unknown event: ${message.event}"))
+                }
+            }
         }
     }
 
@@ -267,6 +414,10 @@ class StradaBridgeManager(
     inner class ToastComponent(private val context: Context) : NativeComponent("toast") {
         override fun handleMessage(message: Message) {
             when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
                 "show" -> {
                     val text = message.data.optString("text", "")
                     val duration = if (message.data.optBoolean("long", false)) {
@@ -275,15 +426,22 @@ class StradaBridgeManager(
                         Toast.LENGTH_SHORT
                     }
                     
-                    activity.runOnUiThread {
+                    val activity = this@StradaBridgeManager.activity
+                    if (activity != null) {
+                        activity.runOnUiThread {
+                            Toast.makeText(context, text, duration).show()
+                        }
+                    } else {
+                        // Fallback to context if activity is not available
                         Toast.makeText(context, text, duration).show()
                     }
                     
                     // Send response back to web
-                    sendToWeb("toast", "shown", mapOf("success" to true))
+                    sendToWeb(name, "shown", mapOf("success" to true))
                 }
                 else -> {
-                    Log.w(TAG, "Unknown event: ${message.event}")
+                    Log.w(TAG, "Unknown event for toast: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Unknown event: ${message.event}"))
                 }
             }
         }
@@ -292,23 +450,31 @@ class StradaBridgeManager(
     /**
      * Dialog component for showing alert and confirm dialogs.
      */
-    inner class DialogComponent(
-        private val context: Context,
-        private val activity: Activity
-    ) : NativeComponent("dialog") {
+    inner class DialogComponent(private val context: Context) : NativeComponent("dialog") {
         override fun handleMessage(message: Message) {
+            val activity = this@StradaBridgeManager.activity ?: run {
+                Log.e(TAG, "Cannot show dialog: activity is null")
+                sendToWeb(name, "error", mapOf("error" to "Cannot show dialog: activity is null"))
+                return
+            }
+            
             when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
                 "alert" -> {
                     val title = message.data.optString("title", "Alert")
                     val text = message.data.optString("text", "")
+                    val buttonText = message.data.optString("buttonText", "OK")
                     
                     activity.runOnUiThread {
                         AlertDialog.Builder(context)
                             .setTitle(title)
                             .setMessage(text)
-                            .setPositiveButton("OK") { dialog, _ ->
+                            .setPositiveButton(buttonText) { dialog, _ ->
                                 dialog.dismiss()
-                                sendToWeb("dialog", "closed", mapOf("result" to "ok"))
+                                sendToWeb(name, "clicked", mapOf("button" to "ok"))
                             }
                             .show()
                     }
@@ -316,24 +482,27 @@ class StradaBridgeManager(
                 "confirm" -> {
                     val title = message.data.optString("title", "Confirm")
                     val text = message.data.optString("text", "")
+                    val okText = message.data.optString("okText", "OK")
+                    val cancelText = message.data.optString("cancelText", "Cancel")
                     
                     activity.runOnUiThread {
                         AlertDialog.Builder(context)
                             .setTitle(title)
                             .setMessage(text)
-                            .setPositiveButton("OK") { dialog, _ ->
+                            .setPositiveButton(okText) { dialog, _ ->
                                 dialog.dismiss()
-                                sendToWeb("dialog", "closed", mapOf("result" to true))
+                                sendToWeb(name, "clicked", mapOf("button" to "ok"))
                             }
-                            .setNegativeButton("Cancel") { dialog, _ ->
+                            .setNegativeButton(cancelText) { dialog, _ ->
                                 dialog.dismiss()
-                                sendToWeb("dialog", "closed", mapOf("result" to false))
+                                sendToWeb(name, "clicked", mapOf("button" to "cancel"))
                             }
                             .show()
                     }
                 }
                 else -> {
-                    Log.w(TAG, "Unknown event: ${message.event}")
+                    Log.w(TAG, "Unknown event for dialog: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Unknown event: ${message.event}"))
                 }
             }
         }
@@ -342,14 +511,21 @@ class StradaBridgeManager(
     /**
      * FilePicker component for opening the native file picker.
      */
-    inner class FilePickerComponent(
-        private val context: Context,
-        private val activity: Activity
-    ) : NativeComponent("filePicker") {
+    inner class FilePickerComponent(private val context: Context) : NativeComponent("filePicker") {
         private val FILE_PICKER_REQUEST_CODE = 1001
         
         override fun handleMessage(message: Message) {
+            val activity = this@StradaBridgeManager.activity ?: run {
+                Log.e(TAG, "Cannot open file picker: activity is null")
+                sendToWeb(name, "error", mapOf("error" to "Cannot open file picker: activity is null"))
+                return
+            }
+            
             when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
                 "open" -> {
                     val mimeType = message.data.optString("mimeType", "*/*")
                     val multiple = message.data.optBoolean("multiple", false)
@@ -365,7 +541,8 @@ class StradaBridgeManager(
                     }
                 }
                 else -> {
-                    Log.w(TAG, "Unknown event: ${message.event}")
+                    Log.w(TAG, "Unknown event for filePicker: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Unknown event: ${message.event}"))
                 }
             }
         }
@@ -393,10 +570,10 @@ class StradaBridgeManager(
                     }
                 }
                 
-                sendToWeb("filePicker", "selected", mapOf("files" to result))
+                sendToWeb(name, "selected", mapOf("files" to result))
             } else if (requestCode == FILE_PICKER_REQUEST_CODE) {
                 // User cancelled the picker
-                sendToWeb("filePicker", "cancelled", mapOf<String, Any>())
+                sendToWeb(name, "cancelled", mapOf<String, Any>())
             }
         }
         
@@ -437,6 +614,98 @@ class StradaBridgeManager(
             }
             
             return null
+        }
+    }
+    
+    /**
+     * Camera component for accessing the device camera
+     */
+    inner class CameraComponent(private val context: Context) : NativeComponent("camera") {
+        override fun handleMessage(message: Message) {
+            when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
+                else -> {
+                    Log.w(TAG, "Camera functionality not yet implemented for event: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Camera functionality not yet implemented"))
+                }
+            }
+        }
+    }
+    
+    /**
+     * Share component for sharing content
+     */
+    inner class ShareComponent(private val context: Context) : NativeComponent("share") {
+        override fun handleMessage(message: Message) {
+            val activity = this@StradaBridgeManager.activity ?: run {
+                Log.e(TAG, "Cannot share: activity is null")
+                sendToWeb(name, "error", mapOf("error" to "Cannot share: activity is null"))
+                return
+            }
+            
+            when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
+                "text" -> {
+                    val text = message.data.optString("text", "")
+                    val title = message.data.optString("title", "Share")
+                    
+                    activity.runOnUiThread {
+                        val intent = Intent(Intent.ACTION_SEND)
+                        intent.type = "text/plain"
+                        intent.putExtra(Intent.EXTRA_TEXT, text)
+                        activity.startActivity(Intent.createChooser(intent, title))
+                        
+                        // Send response back to web
+                        sendToWeb(name, "shared", mapOf("success" to true))
+                    }
+                }
+                else -> {
+                    Log.w(TAG, "Unknown event for share: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Unknown event: ${message.event}"))
+                }
+            }
+        }
+    }
+    
+    /**
+     * Notification component for showing notifications
+     */
+    inner class NotificationComponent(private val context: Context) : NativeComponent("notification") {
+        override fun handleMessage(message: Message) {
+            when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
+                else -> {
+                    Log.w(TAG, "Notification functionality not yet implemented for event: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Notification functionality not yet implemented"))
+                }
+            }
+        }
+    }
+    
+    /**
+     * Location component for accessing device location
+     */
+    inner class LocationComponent(private val context: Context) : NativeComponent("location") {
+        override fun handleMessage(message: Message) {
+            when (message.event) {
+                "connect" -> {
+                    // Send connected event
+                    sendToWeb(name, "connected", mapOf("status" to "ready"))
+                }
+                else -> {
+                    Log.w(TAG, "Location functionality not yet implemented for event: ${message.event}")
+                    sendToWeb(name, "error", mapOf("error" to "Location functionality not yet implemented"))
+                }
+            }
         }
     }
 }
