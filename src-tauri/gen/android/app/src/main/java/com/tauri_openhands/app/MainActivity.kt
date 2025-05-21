@@ -65,9 +65,10 @@ class MainActivity : TauriActivity() {
         // Enable Strada bridge support
         bridgeManager = webView.enableStradaBridge(this)
         
-        // Comment out the test page loading - let Tauri handle the content loading
-        // webView.loadUrlWithStrada("file:///android_asset/strada-test-controllers.html", bridgeManager)
+        // Load the Stimulus demo page
+        webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
         
+        // Uncomment the line below to load the bundled web content instead
         // No need to manually load a URL - Tauri will load the bundled web content automatically
     }
 
