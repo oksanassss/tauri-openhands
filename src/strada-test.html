@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strada Bridge Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .result {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Strada Bridge Test</h1>
+    
+    <div class="card" data-controller="toast">
+        <h2>Toast Component</h2>
+        <p>Test the native toast functionality</p>
+        <button id="showToast">Show Toast</button>
+        <button id="showLongToast">Show Long Toast</button>
+    </div>
+    
+    <div class="card" data-controller="filePicker">
+        <h2>File Picker Component</h2>
+        <p>Test the native file picker functionality</p>
+        <button id="openFilePicker">Open File Picker</button>
+        <div class="result" id="filePickerResult">No file selected</div>
+    </div>
+    
+    <div class="card" data-controller="dialog">
+        <h2>Dialog Component</h2>
+        <p>Test the native dialog functionality</p>
+        <button id="showAlert">Show Alert</button>
+        <button id="showConfirm">Show Confirm</button>
+        <div class="result" id="dialogResult">No dialog result</div>
+    </div>
+    
+    <script>
+        // Wait for Strada to be initialized
+        function waitForStrada(callback) {
+            if (window.Strada) {
+                callback();
+            } else {
+                setTimeout(() => waitForStrada(callback), 100);
+            }
+        }
+        
+        waitForStrada(() => {
+            console.log('Strada is available');
+            
+            // Toast component
+            document.getElementById('showToast').addEventListener('click', () => {
+                window.Strada.toast.send('show', { text: 'Hello from Strada!' });
+            });
+            
+            document.getElementById('showLongToast').addEventListener('click', () => {
+                window.Strada.toast.send('show', { text: 'This is a long toast message', long: true });
+            });
+            
+            // File picker component
+            document.getElementById('openFilePicker').addEventListener('click', () => {
+                window.Strada.filePicker.send('open', { type: 'text/*' });
+            });
+            
+            // Listen for file picker response
+            document.addEventListener('strada:filePicker:selected', (event) => {
+                const data = event.detail;
+                document.getElementById('filePickerResult').textContent = 
+                    `Selected file: ${data.fileName} (${data.fileSize} bytes, ${data.mimeType})`;
+            });
+            
+            // Dialog component
+            document.getElementById('showAlert').addEventListener('click', () => {
+                window.Strada.dialog.send('alert', { 
+                    title: 'Alert',
+                    message: 'This is an alert message',
+                    buttonText: 'OK'
+                });
+            });
+            
+            document.getElementById('showConfirm').addEventListener('click', () => {
+                window.Strada.dialog.send('confirm', {
+                    title: 'Confirm',
+                    message: 'Are you sure you want to proceed?',
+                    confirmText: 'Yes',
+                    cancelText: 'No'
+                });
+            });
+            
+            // Listen for dialog response
+            document.addEventListener('strada:dialog:result', (event) => {
+                const data = event.detail;
+                document.getElementById('dialogResult').textContent = 
+                    `Dialog result: ${data.confirmed ? 'Confirmed' : 'Cancelled'}`;
+            });
+        });
+    </script>
+</body>
+</html>

@@ -139,6 +139,66 @@ button {
   font-size: 1.1rem;
 }
 
+/* Strada Bridge Demo Styles */
+.strada-demo {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #e8f5e9;
+  border-radius: 8px;
+  border: 2px solid #4caf50;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.strada-demo h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #2e7d32;
+}
+
+.card {
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.strada-demo .row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.strada-demo input {
+  flex: 1;
+}
+
+.strada-demo button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.strada-demo button:hover {
+  background-color: #45a049;
+  border-color: #45a049;
+}
+
+pre {
+  background-color: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -176,5 +236,36 @@ button {
   
   .calculator button:hover {
     background-color: #4caf50;
+  }
+  
+  /* Dark mode for Strada demo */
+  .strada-demo {
+    background-color: #1b5e20;
+    border-color: #4caf50;
+  }
+  
+  .strada-demo h2 {
+    color: #a5d6a7;
+  }
+  
+  .card {
+    background-color: #3a3a3a;
+  }
+  
+  .card h3 {
+    color: #e0e0e0;
+  }
+  
+  .strada-demo button {
+    background-color: #4caf50;
+  }
+  
+  .strada-demo button:hover {
+    background-color: #45a049;
+  }
+  
+  pre {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
   }
 }
