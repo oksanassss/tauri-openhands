@@ -1,32 +1,60 @@
 // strada-bridge.js
 // This file provides integration between Tauri's JavaScript API and the Strada bridge
 
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-// Initialize the Strada bridge
-export function initStradaBridge() {
-  console.log('Initializing Strada bridge');
+// Global olarak StradaBridge'i tanımla
+window.StradaBridge = {
+  initialized: false,
+  messageQueue: [],
   
-  // Listen for strada-event events from Rust
-  listen('strada-event', (event) => {
-    console.log('Received strada-event from Rust:', event);
-    
-    // Forward the event to the Strada bridge
-    if (window.StradaReceiveMessage) {
-      const message = {
-        component: event.payload.component,
-        event: event.payload.event,
-        data: event.payload.data
-      };
-      
-      window.StradaReceiveMessage(JSON.stringify(message));
+  init: function() {
+    if (!window.StradaNativeBridge) {
+      return false;
     }
-  });
-}
+    
+    this.initialized = true;
+    console.log('StradaBridge initialized successfully');
+    this.processQueue();
+    return true;
+  },
 
-// Send a message to the Strada bridge from Rust
-export async function sendStradaMessage(component, event, data = {}) {
+  processQueue: function() {
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      this.processMessage(message);
+    }
+  },
+
+  processMessage: function(message) {
+    document.dispatchEvent(new CustomEvent('strada-event', {
+      detail: message
+    }));
+  },
+
+  receiveFromRust: function(message) {
+    if (!this.initialized) {
+      this.messageQueue.push(message);
+      return;
+    }
+    this.processMessage(message);
+  }
+};
+
+// Native bridge hazır olduğunda başlat
+document.addEventListener('strada-native-ready', () => {
+  console.log('Native bridge ready event received');
+  window.StradaBridge.init();
+});
+
+// Sayfa yüklendiğinde de kontrol et
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM loaded, checking bridge status');
+  window.StradaBridge.init();
+});
+
+async function sendStradaMessage(component, event, data = {}) {
   console.log(`Sending Strada message: ${component}.${event}`, data);
   
   try {
@@ -44,8 +72,7 @@ export async function sendStradaMessage(component, event, data = {}) {
   }
 }
 
-// Handle a Strada message in Rust
-export async function handleStradaMessage(component, event, data = {}) {
+async function handleStradaMessage(component, event, data = {}) {
   console.log(`Handling Strada message in Rust: ${component}.${event}`, data);
   
   try {
@@ -63,8 +90,7 @@ export async function handleStradaMessage(component, event, data = {}) {
   }
 }
 
-// Export a function to register Strada components
-export function registerStradaComponent(name) {
+function registerStradaComponent(name) {
   if (!window.Strada) {
     console.error('Strada is not initialized');
     return null;
@@ -73,5 +99,32 @@ export function registerStradaComponent(name) {
   return window.Strada.registerComponent(name);
 }
 
-// Initialize the bridge when the module is imported
-initStradaBridge();
+function checkStradaBridge() {
+  if (window.StradaNativeBridge) {
+    return true;
+  }
+  
+  if (window._stradaRetryCount === undefined) {
+    window._stradaRetryCount = 0;
+  }
+  
+  if (window._stradaRetryCount > 20) {
+    console.error('StradaNativeBridge not initialized');
+    return false;
+  }
+  
+  window._stradaRetryCount++;
+  console.warn('StradaNativeBridge not ready, retrying... Attempt: ' + window._stradaRetryCount);
+  setTimeout(checkStradaBridge, 500);
+  return false;
+}
+
+// DOMContentLoaded'da tekrar dene
+document.addEventListener('DOMContentLoaded', checkStradaBridge);
+
+// Export functions
+export { 
+  registerStradaComponent,
+  sendStradaMessage,
+  handleStradaMessage 
+};

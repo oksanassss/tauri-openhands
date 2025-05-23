@@ -58,7 +58,7 @@ function App() {
   // Listen for Strada events
   useEffect(() => {
     const handleStradaEvent = (event) => {
-      const { component, event: eventName, data } = JSON.parse(event.detail);
+      const { component, event: eventName, data } = event.detail;
       
       if (component === "dialog" && eventName === "result") {
         setDialogResult(data.confirmed ? "Confirmed" : "Cancelled");

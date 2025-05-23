@@ -150,29 +150,32 @@ pub fn send_strada_message<R: Runtime>(
     window: Window<R>,
     message: StradaMessage,
 ) -> Result<(), String> {
-    // Emit an event to the frontend
-    window
-        .emit("strada-message", &message)
-        .map_err(|e| e.to_string())?;
-    
-    // Also inject JavaScript to call the StradaNativeBridge.receiveFromRust method
+    // JSON stringini oluştur
     let message_json = serde_json::to_string(&message)
         .map_err(|e| e.to_string())?;
     
-    // Escape single quotes in the JSON string
-    let escaped_json = message_json.replace('\'', "\\'");
+    println!("Sending message to JS: {}", message_json);
     
-    // Create JavaScript to call the receiveFromRust method
+    // JavaScript kodunu oluştur
     let js = format!(
-        "if (window.StradaNativeBridge && window.StradaNativeBridge.receiveFromRust) {{ 
-            window.StradaNativeBridge.receiveFromRust('{}'); 
-        }} else {{ 
-            console.error('StradaNativeBridge.receiveFromRust not available'); 
-        }}",
-        escaped_json
+        r#"
+        if (window.StradaBridge && typeof window.StradaBridge.receiveFromRust === 'function') {{
+            try {{
+                const messageStr = '{}';
+                console.log('Received message from Rust:', messageStr);
+                const message = JSON.parse(messageStr);
+                window.StradaBridge.receiveFromRust(message);
+            }} catch (error) {{
+                console.error('Error parsing message:', error);
+            }}
+        }} else {{
+            console.error('StradaBridge.receiveFromRust not available');
+        }}
+        "#,
+        message_json.replace('\'', "\\'")
     );
     
-    // Execute the JavaScript using eval
+    // JavaScript'i çalıştır
     let window_clone = window.clone();
     window
         .run_on_main_thread(move || {

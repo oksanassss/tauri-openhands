@@ -13,7 +13,8 @@ export default defineConfig(async () => ({
         '@tauri-apps/api/tauri',
         '@tauri-apps/api/event'
       ]
-    }
+    },
+    target: 'esnext'
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
@@ -37,4 +38,8 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  optimizeDeps: {
+    exclude: ['@tauri-apps/api']
+  }
 }));

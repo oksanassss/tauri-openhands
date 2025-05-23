@@ -7,6 +7,8 @@ import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.tauri_openhands.app.TauriActivity
+import android.webkit.JavascriptInterface
+import android.app.Activity
 
 class MainActivity : TauriActivity() {
     private val TAG = "MainActivity"
@@ -39,36 +41,51 @@ class MainActivity : TauriActivity() {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         
-        // Get the WebView from Tauri after it's created
         try {
             webView = findViewById(getWebViewId())
             if (webView != null) {
-                // Set the WebView reference in the bridge manager
-                bridgeManager.setWebView(webView!!)
-                
                 setupWebView(webView!!)
-                Log.d(TAG, "WebView setup complete")
+                Log.d(TAG, "WebView kurulumu tamamlandı")
+                
+                webView?.loadUrl("http://tauri.localhost")
             } else {
-                Log.e(TAG, "WebView not found")
+                Log.e(TAG, "WebView bulunamadı")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting up WebView", e)
+            Log.e(TAG, "WebView kurulumu sırasında hata", e)
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView(webView: WebView) {
-        // Enable JavaScript and DOM storage
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = true
+            allowContentAccess = true
+            databaseEnabled = true
+        }
         
-        // Enable Strada bridge support
-        bridgeManager = webView.enableStradaBridge(this)
+        // StradaBridge'i WebView'a ekle
+        webView.addJavascriptInterface(StradaBridge(this, webView), "StradaNativeBridge")
         
-        // Load the Stimulus demo page
-        webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
+        // Bridge manager'ı WebView ile ilişkilendir
+        bridgeManager.setWebView(webView)
         
-        Log.d(TAG, "WebView setup complete - loaded Stimulus demo page")
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                // Strada bridge'ini başlat
+                val initScript = """
+                    if (window.initStradaBridge) {
+                        window.initStradaBridge();
+                    } else {
+                        console.error('initStradaBridge not found');
+                    }
+                """.trimIndent()
+                webView.evaluateJavascript(initScript, null)
+            }
+        }
     }
 
     private fun getWebViewId(): Int {
@@ -90,3 +107,4 @@ class MainActivity : TauriActivity() {
 
     // The injectStradaJavaScript method is now handled by the StradaBridgeManager
 }
+

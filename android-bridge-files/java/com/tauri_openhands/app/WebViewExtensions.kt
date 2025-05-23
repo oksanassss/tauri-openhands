@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONArray
 
 private const val TAG = "WebViewExtensions"
 
@@ -21,7 +22,7 @@ fun WebView.enableStradaBridge(context: Context): StradaBridgeManager {
     settings.domStorageEnabled = true
     
     // Create and initialize the bridge manager
-    val bridgeManager = StradaBridgeManager(context)
+    val bridgeManager = StradaBridgeManager(context as Context)
     bridgeManager.setWebView(this)
     
     Log.d(TAG, "Strada bridge enabled for WebView")
@@ -34,7 +35,7 @@ fun WebView.enableStradaBridge(context: Context): StradaBridgeManager {
  * This function sets a WebViewClient that checks for Stimulus-specific elements and injects the Strada bridge.
  */
 fun WebView.enableAutoStradaBridge(context: Context): StradaBridgeManager {
-    val bridgeManager = StradaBridgeManager(context)
+    val bridgeManager = StradaBridgeManager(context as Context)
     
     // Set a WebViewClient that detects Stimulus pages
     webViewClient = object : WebViewClient() {
@@ -86,4 +87,25 @@ fun WebView.loadUrlWithStrada(url: String, bridgeManager: StradaBridgeManager) {
     loadUrl(url)
     
     Log.d(TAG, "Loading URL with Strada bridge: $url")
+}
+
+fun WebView.detectStimulusControllers() {
+    evaluateJavascript("""
+        (function() {
+            const controllers = [];
+            document.querySelectorAll('[data-controller]').forEach(el => {
+                const names = el.getAttribute('data-controller').split(' ');
+                controllers.push(...names);
+            });
+            return JSON.stringify([...new Set(controllers)]);
+        })()
+    """) { result ->
+        if (result != null && result != "null") {
+            val controllerNames = JSONArray(result)
+            for (i in 0 until controllerNames.length()) {
+                val name = controllerNames.getString(i)
+                Log.d("Strada", "Detected Stimulus controller: $name")
+            }
+        }
+    }
 }

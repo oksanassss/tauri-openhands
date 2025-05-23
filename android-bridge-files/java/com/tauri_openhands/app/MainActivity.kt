@@ -2,6 +2,7 @@ package com.tauri_openhands.app
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
@@ -18,12 +19,7 @@ class MainActivity : TauriActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Initialize the bridge manager
         bridgeManager = StradaBridgeManager(this)
-        
-        // Log that the bridge manager has been initialized
-        Log.d(TAG, "StradaBridgeManager initialized")
     }
     
     /**
@@ -37,19 +33,16 @@ class MainActivity : TauriActivity() {
         Log.d(TAG, "Activity result forwarded to bridge manager: requestCode=$requestCode, resultCode=$resultCode")
     }
     
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         
-        // Get the WebView from Tauri after it's created
         try {
             webView = findViewById(getWebViewId())
-            if (webView != null) {
-                // Set the WebView reference in the bridge manager
-                bridgeManager.setWebView(webView!!)
-                
-                setupWebView(webView!!)
-                Log.d(TAG, "WebView setup complete")
-            } else {
+            webView?.let { 
+                setupWebView(it)
+                bridgeManager.setWebView(it)
+            } ?: run {
                 Log.e(TAG, "WebView not found")
             }
         } catch (e: Exception) {
@@ -59,21 +52,24 @@ class MainActivity : TauriActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView(webView: WebView) {
-        // Enable JavaScript and DOM storage
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            javaScriptCanOpenWindowsAutomatically = true
+            allowFileAccess = true
+            allowContentAccess = true
+        }
         
-        // Enable Strada bridge support
-        bridgeManager = webView.enableStradaBridge(this)
-        
-        // For testing, load our Stimulus test controllers page in debug mode
-        if (BuildConfig.DEBUG) {
-            // Load our custom Stimulus test page with controllers
-            webView.loadUrlWithStrada("file:///android_asset/strada-test-controllers.html", bridgeManager)
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                bridgeManager.setWebView(webView)
+            }
             
-            // Alternative options:
-            // webView.loadUrlWithStrada("https://stimulusjs.demo.tebe.ch/", bridgeManager)
-            // webView.loadUrlWithStrada("file:///android_asset/strada-bridge-demo.html", bridgeManager)
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                bridgeManager.initialize()
+            }
         }
     }
 

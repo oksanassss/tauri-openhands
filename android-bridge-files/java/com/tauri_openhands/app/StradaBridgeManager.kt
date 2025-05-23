@@ -61,23 +61,58 @@ class StradaBridgeManager(private val context: Context) {
      * Initialize the bridge by injecting JavaScript and setting up the JavascriptInterface.
      */
     private fun initialize() {
-        val webView = this.webView ?: return
+        initializeComponents()
         
-        // Add JavaScript interface
-        webView.addJavascriptInterface(this, "StradaNativeBridge")
-
-        // Inject the Strada JavaScript bridge
-        injectStradaJavaScript(webView)
-
-        // Scan for data-controller attributes when page is loaded
-        webView.setOnPageFinishedListener { url ->
-            Log.d(TAG, "Page finished loading: $url")
-            scanForControllers()
+        webView?.post {
+            webView?.addJavascriptInterface(this, "StradaNativeBridge")
             
-            // Send connected events to all registered components
-            components.forEach { (name, _) ->
-                sendToWeb(name, "connected", mapOf("status" to "ready"))
+            val js = """
+                if (typeof window.StradaNativeBridge === 'undefined') {
+                    window.StradaNativeBridge = {
+                        receiveMessage: function(message) {
+                            StradaNativeBridge.receiveMessage(message);
+                        },
+                        postMessage: function(message) {
+                            StradaNativeBridge.receiveMessage(JSON.stringify(message));
+                        }
+                    };
+                    
+                    // StradaBridge'i başlat
+                    if (window.StradaBridge && typeof window.StradaBridge.init === 'function') {
+                        window.StradaBridge.init();
+                    }
+                    
+                    document.dispatchEvent(new CustomEvent('strada-native-ready'));
+                }
+            """.trimIndent()
+            
+            webView?.evaluateJavascript(js) { result ->
+                Log.d(TAG, "Bridge initialized with result: $result")
             }
+        }
+    }
+
+    private fun initializeComponents() {
+        components["dialog"] = DialogComponent(context)
+        components["toast"] = ToastComponent(context)
+        components["filePicker"] = FilePickerComponent(context)
+    }
+
+    private fun injectBridgeScript() {
+        val js = """
+            window.StradaNativeBridge = {
+                postMessage: function(message) {
+                    StradaNativeBridge.receiveMessage(JSON.stringify(message));
+                }
+            };
+            
+            // Bridge hazır olduğunu bildir
+            window.dispatchEvent(new CustomEvent('strada-bridge-ready'));
+            console.log('StradaNativeBridge initialized');
+        """.trimIndent()
+        
+        webView?.post {
+            webView?.evaluateJavascript(js, null)
         }
     }
 
@@ -178,97 +213,55 @@ class StradaBridgeManager(private val context: Context) {
                     console.log('Strada: Detected Stimulus, loading adapter');
                     
                     // Load the Stimulus adapter
-                    const stimulusAdapter = `
-                    /**
-                     * Strada Stimulus Adapter
-                     * 
-                     * This script provides integration between the Strada bridge and Stimulus controllers.
-                     * It automatically registers Strada components for Stimulus controllers and forwards
-                     * events between them.
-                     */
-                    
-                    (function() {
-                      // Wait for both Strada and Stimulus to be available
-                      function waitForDependencies(callback) {
-                        if (window.Strada && window.Stimulus) {
-                          callback();
-                        } else {
-                          setTimeout(() => waitForDependencies(callback), 100);
-                        }
-                      }
-                    
-                      waitForDependencies(() => {
-                        console.log('Strada Stimulus Adapter: Initializing');
-                        
-                        // Store original Stimulus controller registration
-                        const originalRegister = window.Stimulus.register;
-                        
-                        // Override Stimulus.register to automatically register Strada components
-                        window.Stimulus.register = function(name, controller) {
-                          // Register with Stimulus
-                          const result = originalRegister.call(this, name, controller);
-                          
-                          // Register with Strada
-                          if (window.Strada && !window.Strada[name]) {
-                            window.Strada.registerComponent(name);
-                            console.log('Strada Stimulus Adapter: Registered component for controller', name);
-                            
-                            // Listen for Strada events and dispatch them to Stimulus controllers
-                            document.addEventListener('strada:' + name + ':*', function(event) {
-                              const eventName = event.type.split(':')[2];
-                              const detail = event.detail;
-                              
-                              // Find all instances of this controller
-                              const elements = document.querySelectorAll('[data-controller~="' + name + '"]');
-                              elements.forEach(element => {
-                                // Dispatch a custom event to the element
-                                const customEvent = new CustomEvent('strada:' + eventName, {
-                                  detail: detail,
-                                  bubbles: true
-                                });
-                                element.dispatchEvent(customEvent);
-                              });
-                            });
-                          }
-                          
-                          return result;
-                        };
-                        
-                        // Patch existing controllers
-                        if (window.Stimulus.application) {
-                          const controllerNames = Object.keys(window.Stimulus.application.controllers);
-                          controllerNames.forEach(name => {
-                            if (!window.Strada[name]) {
-                              window.Strada.registerComponent(name);
-                              console.log('Strada Stimulus Adapter: Registered component for existing controller', name);
-                            }
-                          });
-                        }
-                        
-                        // Add helper to Stimulus controllers
-                        window.Stimulus.Controller.prototype.strada = function(event, data) {
-                          const controllerName = this.identifier;
-                          if (window.Strada && window.Strada[controllerName]) {
-                            window.Strada[controllerName].send(event, data);
-                            return true;
-                          }
-                          return false;
-                        };
-                        
-                        console.log('Strada Stimulus Adapter: Initialized');
-                      });
-                    })();
-                    `;
-                    
-                    // Evaluate the adapter script
-                    setTimeout(function() {
-                        eval(stimulusAdapter);
-                    }, 500);
+                    injectStimulusAdapter(webView)
                 }
             }
         """.trimIndent()
         
         webView.evaluateJavascript(js, null)
+    }
+
+    /**
+     * Inject the Stimulus adapter into the WebView.
+     */
+    private fun injectStimulusAdapter(webView: WebView) {
+        val js = """
+            if (window.Stimulus) {
+                // Stimulus kontrolcülerini otomatik olarak Strada'ya bağla
+                const originalRegister = window.Stimulus.register;
+                window.Stimulus.register = function(name, controller) {
+                    // Orijinal Stimulus kaydını yap
+                    const result = originalRegister.call(this, name, controller);
+                    
+                    // Strada bileşenini kaydet
+                    if (window.Strada && !window.Strada[name]) {
+                        window.Strada.registerComponent(name);
+                        console.log('Strada: Registered Stimulus controller', name);
+                    }
+                    
+                    return result;
+                };
+                
+                // Strada olaylarını Stimulus kontrolcülerine ilet
+                document.addEventListener('strada-event', function(event) {
+                    const { component, event: eventName, data } = event.detail;
+                    const elements = document.querySelectorAll(`[data-controller~="${component}"]`);
+                    elements.forEach(element => {
+                        const event = new CustomEvent(`strada:${eventName}`, { 
+                            detail: data,
+                            bubbles: true 
+                        });
+                        element.dispatchEvent(event);
+                    });
+                });
+                
+                console.log('Strada: Stimulus adapter initialized');
+            }
+        """.trimIndent()
+        
+        webView.post {
+            webView.evaluateJavascript(js, null)
+        }
     }
 
     /**
@@ -355,7 +348,11 @@ class StradaBridgeManager(private val context: Context) {
         try {
             val message = parseMessage(messageJson)
             val component = getOrCreateComponent(message.component)
-            component.handleMessage(message)
+            
+            // Ana thread'de çalıştır
+            activity?.runOnUiThread {
+                component.handleMessage(message)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error handling message", e)
         }
@@ -403,17 +400,68 @@ class StradaBridgeManager(private val context: Context) {
      */
     @JavascriptInterface
     fun receiveMessage(messageJson: String) {
-        Log.d(TAG, "Received message from web: $messageJson")
-        
-        // Process the message on the main thread
-        val activity = this.activity
-        if (activity != null) {
-            activity.runOnUiThread {
-                sendMessage(messageJson)
+        try {
+            Log.d(TAG, "Received message from web: $messageJson")
+            val message = parseMessage(messageJson)
+            handleMessage(message)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing message", e)
+        }
+    }
+
+    private fun handleDialogMessage(message: Message) {
+        when (message.event) {
+            "alert" -> {
+                val title = message.data.optString("title", "Alert")
+                val messageText = message.data.optString("message", "")
+                val buttonText = message.data.optString("buttonText", "OK")
+                
+                AlertDialog.Builder(context)
+                    .setTitle(title)
+                    .setMessage(messageText)
+                    .setPositiveButton(buttonText) { dialog, _ -> 
+                        dialog.dismiss()
+                        sendToWeb("dialog", "closed", mapOf("result" to "ok"))
+                    }
+                    .show()
             }
-        } else {
-            // Fallback to direct processing if activity is not available
-            sendMessage(messageJson)
+            "confirm" -> {
+                val title = message.data.optString("title", "Confirm")
+                val messageText = message.data.optString("message", "")
+                val confirmText = message.data.optString("confirmText", "Yes")
+                val cancelText = message.data.optString("cancelText", "No")
+                
+                AlertDialog.Builder(context)
+                    .setTitle(title)
+                    .setMessage(messageText)
+                    .setPositiveButton(confirmText) { dialog, _ ->
+                        dialog.dismiss()
+                        sendToWeb("dialog", "closed", mapOf("result" to "confirmed"))
+                    }
+                    .setNegativeButton(cancelText) { dialog, _ ->
+                        dialog.dismiss()
+                        sendToWeb("dialog", "closed", mapOf("result" to "cancelled"))
+                    }
+                    .show()
+            }
+        }
+    }
+
+    private fun handleToastMessage(message: Message) {
+        when (message.event) {
+            "show" -> {
+                val text = message.data.optString("text", "")
+                Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun handleFilePickerMessage(message: Message) {
+        when (message.event) {
+            "open" -> {
+                val component = components["filePicker"] as? FilePickerComponent
+                component?.handleMessage(message)
+            }
         }
     }
 
@@ -643,7 +691,6 @@ class StradaBridgeManager(private val context: Context) {
             
             when (message.event) {
                 "connect" -> {
-                    // Send connected event
                     sendToWeb(name, "connected", mapOf("status" to "ready"))
                 }
                 "open" -> {

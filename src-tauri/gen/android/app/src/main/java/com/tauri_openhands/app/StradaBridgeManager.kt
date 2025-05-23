@@ -15,39 +15,19 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * This implementation is based on the Hotwire Strada pattern for native bridge communication.
  */
-class StradaBridgeManager(private val context: Context) {
-    private var activity: Activity? = null
+class StradaBridgeManager(private val activity: Activity) {
     private var webView: WebView? = null
-    
-    init {
-        if (context is Activity) {
-            activity = context
-        }
-    }
-    
-    /**
-     * Set the WebView instance to use for JavaScript communication
-     */
+    private val stradaBridge: StradaBridge? = null
+
     fun setWebView(webView: WebView) {
         this.webView = webView
-        initialize()
+        webView.addJavascriptInterface(StradaBridge(activity, webView), "StradaNativeBridge")
     }
-    
-    /**
-     * Handle activity results from the parent activity
-     */
+
     fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        // Check for both camelCase and kebab-case component names
-        val filePickerComponent = components["filePicker"] as? FilePickerComponent
-        filePickerComponent?.handleActivityResult(requestCode, resultCode, data)
-        
-        // Also check for kebab-case component name (used by Stimulus)
-        val kebabCaseComponent = components["file-picker"] as? FilePickerComponent
-        if (kebabCaseComponent != null && kebabCaseComponent !== filePickerComponent) {
-            kebabCaseComponent.handleActivityResult(requestCode, resultCode, data)
-        }
+        // Handle activity results here
     }
-    
+
     companion object {
         private const val TAG = "StradaBridgeManager"
         private const val BRIDGE_NAME = "StradaBridge"
@@ -336,10 +316,10 @@ class StradaBridgeManager(private val context: Context) {
      */
     private fun getOrCreateComponent(name: String): NativeComponent {
         return components[name] ?: when (name) {
-            "toast" -> ToastComponent(context)
-            "dialog" -> DialogComponent(context).also { it.setBridgeManager(this) }
-            "filePicker" -> FilePickerComponent(context).also { it.setBridgeManager(this) }
-            "file-picker" -> FilePickerComponent(context).also { it.setBridgeManager(this) } // Support kebab-case for Stimulus
+            "toast" -> ToastComponent(activity)
+            "dialog" -> DialogComponent(activity).also { it.setBridgeManager(this) }
+            "filePicker" -> FilePickerComponent(activity).also { it.setBridgeManager(this) }
+            "file-picker" -> FilePickerComponent(activity).also { it.setBridgeManager(this) } // Support kebab-case for Stimulus
             else -> {
                 Log.d(TAG, "Creating generic component for: $name")
                 GenericComponent(name)

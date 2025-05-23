@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.app.Activity
+import android.webkit.WebSettings
 
 private const val TAG = "WebViewExtensions"
 
@@ -13,7 +15,7 @@ private const val TAG = "WebViewExtensions"
  * This function configures the WebView with the necessary settings and injects the Strada bridge JavaScript.
  */
 @SuppressLint("SetJavaScriptEnabled")
-fun WebView.enableStradaBridge(context: Context): StradaBridgeManager {
+fun WebView.enableStradaBridge(activity: Activity): StradaBridgeManager {
     // Enable JavaScript
     settings.javaScriptEnabled = true
     
@@ -21,7 +23,7 @@ fun WebView.enableStradaBridge(context: Context): StradaBridgeManager {
     settings.domStorageEnabled = true
     
     // Create and initialize the bridge manager
-    val bridgeManager = StradaBridgeManager(context)
+    val bridgeManager = StradaBridgeManager(activity)
     bridgeManager.setWebView(this)
     
     Log.d(TAG, "Strada bridge enabled for WebView")
@@ -62,4 +64,18 @@ fun WebView.loadUrlWithStrada(url: String, bridgeManager: StradaBridgeManager) {
     loadUrl(url)
     
     Log.d(TAG, "Loading URL with Strada bridge: $url")
+}
+
+fun WebView.setupForStrada(activity: Activity) {
+    settings.apply {
+        javaScriptEnabled = true
+        domStorageEnabled = true
+        allowFileAccess = true
+        allowContentAccess = true
+        databaseEnabled = true
+        setGeolocationEnabled(true)
+    }
+    
+    val bridge = StradaBridge(activity, this)
+    addJavascriptInterface(bridge, "StradaNativeBridge")
 }

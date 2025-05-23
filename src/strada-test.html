@@ -49,11 +49,13 @@
         <button id="showLongToast">Show Long Toast</button>
     </div>
     
-    <div class="card" data-controller="filePicker">
+    <div class="card" data-controller="file-picker">
         <h2>File Picker Component</h2>
         <p>Test the native file picker functionality</p>
-        <button id="openFilePicker">Open File Picker</button>
-        <div class="result" id="filePickerResult">No file selected</div>
+        <button data-action="click->file-picker#open">
+            Dosya Seç
+        </button>
+        <div data-file-picker-target="result"></div>
     </div>
     
     <div class="card" data-controller="dialog">
@@ -122,6 +124,27 @@
                 document.getElementById('dialogResult').textContent = 
                     `Dialog result: ${data.confirmed ? 'Confirmed' : 'Cancelled'}`;
             });
+        });
+
+        // Stimulus kontrolcüsü
+        application.register("file-picker", class extends Stimulus.Controller {
+            static targets = ["result"]
+            
+            open() {
+                window.Strada["file-picker"].send("open", {
+                    mimeTypes: ["image/*", "application/pdf"]
+                });
+            }
+            
+            // Strada'dan gelen yanıtı dinle
+            connect() {
+                this.element.addEventListener("strada:result", (event) => {
+                    const files = event.detail.files;
+                    this.resultTarget.innerHTML = files.map(file => 
+                        `<p>Seçilen dosya: ${file.name} (${file.type})</p>`
+                    ).join("");
+                });
+            }
         });
     </script>
 </body>
