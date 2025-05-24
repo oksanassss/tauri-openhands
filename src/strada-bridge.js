@@ -4,7 +4,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-// Global olarak StradaBridge'i tanımla
 window.StradaBridge = {
   initialized: false,
   messageQueue: [],

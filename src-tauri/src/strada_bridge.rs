@@ -156,7 +156,6 @@ pub fn send_strada_message<R: Runtime>(
     
     println!("Sending message to JS: {}", message_json);
     
-    // JavaScript kodunu oluştur - improved version with retry logic
     let js = format!(
         r#"
         function sendMessageToStradaBridge(messageStr, retryCount) {{
